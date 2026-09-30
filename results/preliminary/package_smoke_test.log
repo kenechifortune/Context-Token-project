@@ -1,0 +1,87 @@
+[1/3] Independent SR math tests
+synthetic 7 3 rel backend 6.712748627434929e-16
+synthetic 20 5 rel backend 4.565116057326643e-15
+synthetic 4 10 rel backend 1.5901317017379842e-15
+toy metric rel 2.63930066680228e-08
+toy force rel 2.6393006762642994e-08
+toy backend rel 9.13566778441258e-14
+dt 0.001 fplus 0.9999961408154262 fzero 0.9999941850880779 fminus 0.9999883358326761
+dt 0.0003 fplus 0.999999706167126 fzero 0.9999995246920347 fminus 0.9999990054440969
+dt 0.0001 fplus 0.9999999967221063 fzero 0.9999999941088948 fminus 0.9999998539087447
+ALL SR MATH TESTS PASSED
+[2/3] Tiny end-to-end PyTorch run
+N=4, DIM=16, context P=4, dtype=float64
+/mnt/data/context_sr_student_package/code/context_sr_explore_torch.py:259: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+  print(f'fit {step:5d} loss={lf:.4e} meanF={float(fids.mean()):.6f} worstF={float(fids.min()):.6f} smooth={float(smooth):.3e}')
+fit     0 loss=3.6704e-02 meanF=0.963296 worstF=0.949699 smooth=6.750e-05
+fit     1 loss=2.9283e-02 meanF=0.970717 worstF=0.957841 smooth=6.955e-05
+fit     2 loss=2.6433e-02 meanF=0.973567 worstF=0.960977 smooth=7.271e-05
+fit seconds 0.6410105228424072
+oracle mean/worst 0.9774879209462787 0.9651149063732715
+rollout test 0
+  mean/final global F 0.9773145227795828 0.9648129342787607 mean local F 0.9987568181421986 cov opt 0.047964492486042384 0.04755557339120897 rank med 3.0
+{
+  "config": {
+    "Lx": 2,
+    "Ly": 2,
+    "t_steps": 5,
+    "t_max": 0.08,
+    "d_model": 4,
+    "num_heads": 1,
+    "num_layers": 1,
+    "ctx_tokens": 1,
+    "train_protocols": 1,
+    "test_protocols": 1,
+    "steps": 3,
+    "fit_mode": "trajectory",
+    "lr": 0.002,
+    "smooth_weight": 0.001,
+    "ctx_l2_weight": 0.0,
+    "seed": 42,
+    "n_modes": 3,
+    "field_seed": 1234,
+    "test_field_seed": 4321,
+    "test_family": "ood",
+    "sr_reg": 0.03,
+    "sr_rcond": 1e-08,
+    "integrator": "heun",
+    "out": "/mnt/data/context_sr_student_package/runs/smoke",
+    "save_model": true,
+    "load_model": null,
+    "dtype": "float64",
+    "print_every": 1
+  },
+  "oracle_mean": 0.9774879209462787,
+  "oracle_worst": 0.9651149063732715,
+  "tests": [
+    {
+      "test": 0,
+      "mean_global_fid": 0.9773145227795828,
+      "final_global_fid": 0.9648129342787607,
+      "mean_local_fid": 0.9987568181421986,
+      "worst_local_fid": 0.9986997502615494,
+      "mean_coverage": 0.014577304000297858,
+      "mean_coverage_opt": 0.047964492486042384,
+      "worst_coverage_opt": 0.04755557339120897,
+      "median_rank": 3.0,
+      "max_rank": 3
+    }
+  ],
+  "avg_test_mean_global": 0.9773145227795828,
+  "avg_test_final_global": 0.9648129342787607,
+  "avg_coverage_opt": 0.047964492486042384
+}
+[3/3] Checkpoint-level validation
+--- Infinitesimal direction check ---
+eps 0.001 F0 0.9999969218263496 Fplus 0.9999969606403486 Fminus 0.9999968435503331
+eps 0.0003 F0 0.9999997229632706 Fplus 0.999999726445116 Fminus 0.9999997159172036
+eps 0.0001 F0 0.9999999692181303 Fplus 0.9999999696046395 Fminus 0.9999999684351952
+--- Control-affine check ---
+control_affine_relative_error 3.2955880245457906e-16
+--- Finite-difference tangent coverage check ---
+eps 0.001 finite_diff_coverage 0.012566530388030017 analytic_regularized_coverage 0.012550499211337662 error 1.6031176692354876e-05
+eps 0.0003 finite_diff_coverage 0.01255530002764782 analytic_regularized_coverage 0.012550499211337662 error 4.800816310157607e-06
+eps 0.0001 finite_diff_coverage 0.012552098674043721 analytic_regularized_coverage 0.012550499211337662 error 1.5994627060589295e-06
+ALL CHECKPOINT-LEVEL VALIDATIONS PASSED
+ALL SMOKE TESTS PASSED

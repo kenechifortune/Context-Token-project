@@ -1,0 +1,4 @@
+ctx_tokens,embedding_dim,raw_context_dimension,mean_OOD_tangent_coverage,mean_OOD_final_fidelity
+1,12,12,0.8512,0.9583
+2,12,24,0.8558,0.9558
+4,12,48,0.9168,0.9490

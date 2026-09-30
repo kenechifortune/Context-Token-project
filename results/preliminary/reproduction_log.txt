@@ -1,0 +1,216 @@
+N=6, DIM=64, context P=24, dtype=float32
+/mnt/data/context_sr_student_package/code/context_sr_explore_torch.py:259: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+  print(f'fit {step:5d} loss={lf:.4e} meanF={float(fids.mean()):.6f} worstF={float(fids.min()):.6f} smooth={float(smooth):.3e}')
+fit     0 loss=3.1134e-01 meanF=0.688662 worstF=0.374378 smooth=1.055e-04
+fit   100 loss=1.0140e-01 meanF=0.898603 worstF=0.763822 smooth=2.912e-03
+fit   200 loss=6.0771e-02 meanF=0.939233 worstF=0.864576 smooth=3.487e-03
+fit   300 loss=2.3630e-02 meanF=0.976376 worstF=0.931081 smooth=5.303e-03
+fit   399 loss=1.0815e-02 meanF=0.989192 worstF=0.957347 smooth=7.058e-03
+fit seconds 8.914700269699097
+oracle mean/worst 0.98926276 0.9575451
+rollout test 0
+  mean/final global F 0.9800535295654679 0.9472089022766483 mean local F 0.9990676455778004 cov opt 0.8272760274995603 0.6025606859529085 rank med 22.0
+rollout test 1
+  mean/final global F 0.9815493465882912 0.9462022368393271 mean local F 0.9990606265571467 cov opt 0.8485640422716061 0.5641758722640267 rank med 22.0
+rollout test 2
+  mean/final global F 0.9848544036850526 0.9656054097620371 mean local F 0.9993070893845372 cov opt 0.8688734094221067 0.6736081978318624 rank med 22.0
+rollout test 3
+  mean/final global F 0.9840317955649525 0.964331624259478 mean local F 0.999342617649192 cov opt 0.8785055852694058 0.6542720084694308 rank med 22.0
+{
+  "config": {
+    "Lx": 3,
+    "Ly": 2,
+    "t_steps": 17,
+    "t_max": 0.4,
+    "d_model": 12,
+    "num_heads": 3,
+    "num_layers": 1,
+    "ctx_tokens": 2,
+    "train_protocols": 1,
+    "test_protocols": 4,
+    "steps": 400,
+    "fit_mode": "trajectory",
+    "lr": 0.002,
+    "smooth_weight": 0.001,
+    "ctx_l2_weight": 0.0,
+    "seed": 42,
+    "n_modes": 3,
+    "field_seed": 1234,
+    "test_field_seed": 4321,
+    "test_family": "ood",
+    "sr_reg": 0.03,
+    "sr_rcond": 1e-08,
+    "integrator": "heun",
+    "out": "/mnt/data/context_sr_student_package/runs/main",
+    "save_model": true,
+    "load_model": null,
+    "dtype": "float32",
+    "print_every": 100
+  },
+  "oracle_mean": 0.9892627596855164,
+  "oracle_worst": 0.9575451016426086,
+  "tests": [
+    {
+      "test": 0,
+      "mean_global_fid": 0.9800535295654679,
+      "final_global_fid": 0.9472089022766483,
+      "mean_local_fid": 0.9990676455778004,
+      "worst_local_fid": 0.9981164117922415,
+      "mean_coverage": 0.7969469254490363,
+      "mean_coverage_opt": 0.8272760274995603,
+      "worst_coverage_opt": 0.6025606859529085,
+      "median_rank": 22.0,
+      "max_rank": 23
+    },
+    {
+      "test": 1,
+      "mean_global_fid": 0.9815493465882912,
+      "final_global_fid": 0.9462022368393271,
+      "mean_local_fid": 0.9990606265571467,
+      "worst_local_fid": 0.997246320565924,
+      "mean_coverage": 0.8211364382133923,
+      "mean_coverage_opt": 0.8485640422716061,
+      "worst_coverage_opt": 0.5641758722640267,
+      "median_rank": 22.0,
+      "max_rank": 23
+    },
+    {
+      "test": 2,
+      "mean_global_fid": 0.9848544036850526,
+      "final_global_fid": 0.9656054097620371,
+      "mean_local_fid": 0.9993070893845372,
+      "worst_local_fid": 0.9982620507156742,
+      "mean_coverage": 0.8393578059771936,
+      "mean_coverage_opt": 0.8688734094221067,
+      "worst_coverage_opt": 0.6736081978318624,
+      "median_rank": 22.0,
+      "max_rank": 23
+    },
+    {
+      "test": 3,
+      "mean_global_fid": 0.9840317955649525,
+      "final_global_fid": 0.964331624259478,
+      "mean_local_fid": 0.999342617649192,
+      "worst_local_fid": 0.9981917162815782,
+      "mean_coverage": 0.8495725806839078,
+      "mean_coverage_opt": 0.8785055852694058,
+      "worst_coverage_opt": 0.6542720084694308,
+      "median_rank": 22.0,
+      "max_rank": 23
+    }
+  ],
+  "avg_test_mean_global": 0.982622268850941,
+  "avg_test_final_global": 0.9558370432843727,
+  "avg_coverage_opt": 0.8558047661156698
+}
+N=6, DIM=64, context P=24, dtype=float32
+anchor     0 loss=5.1267e-02 F=0.94873273
+anchor   100 loss=3.0994e-06 F=0.99999690
+anchor   200 loss=1.4305e-06 F=0.99999857
+anchor   300 loss=1.0729e-06 F=0.99999893
+anchor   399 loss=7.1526e-07 F=0.99999928
+fit seconds 2.6967127323150635
+oracle mean/worst 0.7516506 0.43198326
+rollout test 0
+  mean/final global F 0.8345722312141656 0.5966744930552995 mean local F 0.9970933297988088 cov opt 0.5851692958524599 0.5678338885124665 rank med 22.0
+rollout test 1
+  mean/final global F 0.8169246872118909 0.5504652004493575 mean local F 0.9969012457970121 cov opt 0.5880739955746404 0.5668026346962336 rank med 22.0
+rollout test 2
+  mean/final global F 0.8226783069446109 0.5509999143237441 mean local F 0.9969206129183941 cov opt 0.5782194564556191 0.5584993264750815 rank med 21.0
+rollout test 3
+  mean/final global F 0.8123384800198449 0.524697290225844 mean local F 0.9967664658383891 cov opt 0.5768400793373453 0.5521831200492437 rank med 22.0
+{
+  "config": {
+    "Lx": 3,
+    "Ly": 2,
+    "t_steps": 17,
+    "t_max": 0.4,
+    "d_model": 12,
+    "num_heads": 3,
+    "num_layers": 1,
+    "ctx_tokens": 2,
+    "train_protocols": 1,
+    "test_protocols": 4,
+    "steps": 400,
+    "fit_mode": "anchor",
+    "lr": 0.002,
+    "smooth_weight": 0.001,
+    "ctx_l2_weight": 0.0,
+    "seed": 42,
+    "n_modes": 3,
+    "field_seed": 1234,
+    "test_field_seed": 4321,
+    "test_family": "ood",
+    "sr_reg": 0.03,
+    "sr_rcond": 1e-08,
+    "integrator": "heun",
+    "out": "/mnt/data/context_sr_student_package/runs/anchor",
+    "save_model": false,
+    "load_model": null,
+    "dtype": "float32",
+    "print_every": 100
+  },
+  "oracle_mean": 0.7516505718231201,
+  "oracle_worst": 0.43198326230049133,
+  "tests": [
+    {
+      "test": 0,
+      "mean_global_fid": 0.8345722312141656,
+      "final_global_fid": 0.5966744930552995,
+      "mean_local_fid": 0.9970933297988088,
+      "worst_local_fid": 0.9964030062370107,
+      "mean_coverage": 0.38874625916155403,
+      "mean_coverage_opt": 0.5851692958524599,
+      "worst_coverage_opt": 0.5678338885124665,
+      "median_rank": 22.0,
+      "max_rank": 23
+    },
+    {
+      "test": 1,
+      "mean_global_fid": 0.8169246872118909,
+      "final_global_fid": 0.5504652004493575,
+      "mean_local_fid": 0.9969012457970121,
+      "worst_local_fid": 0.995673757578938,
+      "mean_coverage": 0.4084072717135365,
+      "mean_coverage_opt": 0.5880739955746404,
+      "worst_coverage_opt": 0.5668026346962336,
+      "median_rank": 22.0,
+      "max_rank": 22
+    },
+    {
+      "test": 2,
+      "mean_global_fid": 0.8226783069446109,
+      "final_global_fid": 0.5509999143237441,
+      "mean_local_fid": 0.9969206129183941,
+      "worst_local_fid": 0.996102782860064,
+      "mean_coverage": 0.3953281140393443,
+      "mean_coverage_opt": 0.5782194564556191,
+      "worst_coverage_opt": 0.5584993264750815,
+      "median_rank": 21.0,
+      "max_rank": 22
+    },
+    {
+      "test": 3,
+      "mean_global_fid": 0.8123384800198449,
+      "final_global_fid": 0.524697290225844,
+      "mean_local_fid": 0.9967664658383891,
+      "worst_local_fid": 0.9953915535436034,
+      "mean_coverage": 0.40412243461082936,
+      "mean_coverage_opt": 0.5768400793373453,
+      "worst_coverage_opt": 0.5521831200492437,
+      "median_rank": 22.0,
+      "max_rank": 22
+    }
+  ],
+  "avg_test_mean_global": 0.821628426347628,
+  "avg_test_final_global": 0.5557092245135613,
+  "avg_coverage_opt": 0.5820757068050162
+}
+N=6, DIM=64, context P=24, dtype=float32
+oracle mean/worst 0.98926276 0.9575451
+rollout test 0
+  mean/final global F 0.983774233830624 0.9607108549212077 mean local F 0.9992679406432188 cov opt 0.8595534687666335 0.6245406916663458 rank med 22.5
+rollout test 1
+  mean/final global F 0.9816932623723519 0.953393109185713 mean local F 0.9991516540835835 cov opt 0.8394834309432827 0.610651183263517 rank med 23.0
+rollout test 2

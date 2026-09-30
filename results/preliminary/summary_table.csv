@@ -1,0 +1,3 @@
+model,training_oracle,OOD_mean_fidelity,OOD_final_fidelity,OOD_mean_tangent_coverage
+anchor-only,0.75165057,0.82162843,0.55570922,0.58207571
+one-trajectory,0.98926276,0.98262227,0.95583704,0.85580477

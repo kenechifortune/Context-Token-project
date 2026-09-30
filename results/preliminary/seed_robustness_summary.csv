@@ -1,0 +1,4 @@
+metric,mean,std,num_seeds
+OOD_mean_fidelity,0.982829,0.002167,3
+OOD_final_fidelity,0.959422,0.004998,3
+mean_tangent_coverage,0.860823,0.017712,3

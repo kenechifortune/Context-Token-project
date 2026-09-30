@@ -1,0 +1,11 @@
+--- Infinitesimal direction check ---
+eps 0.001 F0 0.9999934607212819 Fplus 0.9999992419082573 Fminus 0.99997598559073
+eps 0.0003 F0 0.9999995993201067 Fplus 0.999999924021371 Fminus 0.999997854130899
+eps 0.0001 F0 1.000000138980198 Fplus 0.9999999594962146 Fminus 0.9999999153593808
+--- Control-affine check ---
+control_affine_relative_error 3.7384694451247924e-08
+--- Finite-difference tangent coverage check ---
+eps 0.001 finite_diff_coverage 0.8991704489388781 analytic_regularized_coverage 0.8980277343786676 error 0.0011427145602105337
+eps 0.0003 finite_diff_coverage 0.8983963835694736 analytic_regularized_coverage 0.8980277343786676 error 0.0003686491908060363
+eps 0.0001 finite_diff_coverage 0.8981332412879852 analytic_regularized_coverage 0.8980277343786676 error 0.00010550690931765416
+ALL CHECKPOINT-LEVEL VALIDATIONS PASSED

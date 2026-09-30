@@ -1,0 +1,51 @@
+{
+  "config": {
+    "Lx": 3,
+    "Ly": 2,
+    "t_steps": 17,
+    "t_max": 0.4,
+    "d_model": 12,
+    "num_heads": 1,
+    "num_layers": 1,
+    "ctx_tokens": 2,
+    "train_protocols": 1,
+    "test_protocols": 1,
+    "steps": 3,
+    "fit_mode": "trajectory",
+    "lr": 0.002,
+    "smooth_weight": 0.001,
+    "ctx_l2_weight": 0.0,
+    "seed": 42,
+    "n_modes": 3,
+    "field_seed": 1234,
+    "test_field_seed": 4321,
+    "test_family": "ood",
+    "sr_reg": 0.03,
+    "sr_rcond": 1e-08,
+    "integrator": "heun",
+    "out": "C:/Users/kenec/OneDrive/Documents/Research/CSUN/context_sr_student_package/context_sr_student_package/runs/smoke",
+    "save_model": true,
+    "load_model": null,
+    "dtype": "float64",
+    "print_every": 1
+  },
+  "oracle_mean": 0.7463480213910376,
+  "oracle_worst": 0.4498477847539442,
+  "tests": [
+    {
+      "test": 0,
+      "mean_global_fid": 0.8023065422777858,
+      "final_global_fid": 0.5754148050148788,
+      "mean_local_fid": 0.9971025850710477,
+      "worst_local_fid": 0.9966059370949868,
+      "mean_coverage": 0.185547715616881,
+      "mean_coverage_opt": 0.5743373852762851,
+      "worst_coverage_opt": 0.545293287723551,
+      "median_rank": 23.0,
+      "max_rank": 23
+    }
+  ],
+  "avg_test_mean_global": 0.8023065422777858,
+  "avg_test_final_global": 0.5754148050148788,
+  "avg_coverage_opt": 0.5743373852762851
+}
