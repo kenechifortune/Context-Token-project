@@ -40,6 +40,8 @@ p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
 args = p.parse_args()
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
