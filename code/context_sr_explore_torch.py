@@ -352,91 +352,18 @@ def entanglement_entropy(psi,cut=None):
     of six spins is log(8). Site 0 is the least-significant bit, matching
     ALL_BITS and the Hamiltonian construction above.
     """
-    def entanglement_entropy(psi, direction="auto"):
-    psi = np.asarray(psi, dtype=np.complex128)
-    psi = psi / np.linalg.norm(psi)
-
-    Lx = args.Lx
-    Ly = args.Ly
-    n_spins = Lx * Ly
-    dim = 2**n_spins
-
-    if psi.size != dim:
-        raise ValueError(
-            f"Expected wavefunction size {dim}, got {psi.size}"
-        )
-
-    if n_spins < 2:
-        return 0.0
-
-    def site_index(x, y):
-        return y * Lx + x
-
-    vertical_A = [
-        site_index(x, y)
-        for y in range(Ly)
-        for x in range(Lx // 2)
-    ]
-
-    horizontal_A = [
-        site_index(x, y)
-        for y in range(Ly // 2)
-        for x in range(Lx)
-    ]
-
-    if direction == "vertical" and vertical_A:
-        A_sites = vertical_A
-    elif direction == "horizontal" and horizontal_A:
-        A_sites = horizontal_A
-    else:
-        candidates = [
-            sites for sites in (vertical_A, horizontal_A)
-            if 0 < len(sites) < n_spins
-        ]
-
-        if not candidates:
-            return 0.0
-
-        A_sites = min(
-            candidates,
-            key=lambda sites: abs(len(sites) - n_spins / 2)
-        )
-
-    B_sites = [
-        site for site in range(n_spins)
-        if site not in A_sites
-    ]
-
-    dim_A = 2**len(A_sites)
-    dim_B = 2**len(B_sites)
-
-    coefficient_matrix = np.zeros(
-        (dim_A, dim_B),
-        dtype=np.complex128
-    )
-
-    for state_index in range(dim):
-        a_index = 0
-        b_index = 0
-
-        for new_bit, site in enumerate(A_sites):
-            bit = (state_index >> site) & 1
-            a_index |= bit << new_bit
-
-        for new_bit, site in enumerate(B_sites):
-            bit = (state_index >> site) & 1
-            b_index |= bit << new_bit
-
-        coefficient_matrix[a_index, b_index] = psi[state_index]
-
-    rho_A = coefficient_matrix @ coefficient_matrix.conj().T
-
-    eigenvalues = np.linalg.eigvalsh(rho_A)
-    eigenvalues = eigenvalues[eigenvalues > 1e-12]
-
-    return float(
-        -np.sum(eigenvalues * np.log(eigenvalues))
-    )
+    psi=np.asarray(psi,dtype=np.complex128)
+    psi=psi/np.linalg.norm(psi)
+    if cut is None: cut=N//2
+    if not 0<cut<N: raise ValueError('cut must satisfy 0 < cut < N')
+    da,db=2**cut,2**(N-cut)
+    coeff=np.zeros((da,db),dtype=np.complex128)
+    for idx in range(DIM):
+        coeff[idx & (da-1),idx >> cut]=psi[idx]
+    rho_a=coeff@coeff.conj().T
+    vals=np.linalg.eigvalsh((rho_a+rho_a.conj().T)/2)
+    vals=vals[vals>1e-12]
+    return float(-np.sum(vals*np.log(vals)))
 
 def save_energy_entanglement_plot(result,q):
     """Save variational and exact energy/entropy versus time."""
