@@ -38,8 +38,6 @@ p.add_argument('--save-model', action='store_true')
 p.add_argument('--load-model', type=str, default=None)
 p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
-args = p.parse_args()
-
 p.add_argument(
     "--device",
     choices=["auto", "cpu", "cuda"],
