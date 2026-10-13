@@ -152,7 +152,7 @@ def gen_fields(seed,n_protocols):
 
 # Basis bitstrings, least-significant bit = site 0.
 ALL_BITS=np.stack([((idx_np>>i)&1) for i in range(N)],axis=1).astype(np.int64)
-ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long)
+ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long, device=device)
 
 # ----------------------------
 # Context-conditioned autoregressive transformer
@@ -191,7 +191,7 @@ class ContextNQS(nn.Module):
             x=torch.cat([start,prev],dim=1)
         else: x=start
         # True means masked for torch MHA. Mask future j>i.
-        mask=torch.triu(torch.ones(N,N,dtype=torch.bool),diagonal=1)
+        mask=torch.triu(torch.ones(N,N,dtype=torch.bool, device=device),diagonal=1)
         for b in self.blocks: x=b(x,ctx,mask)
         h=self.lnf(x)
         la=self.amp(h); ph=self.phase(h)
@@ -239,11 +239,11 @@ def fit_model(model,train_states):
     P=args.train_protocols; T=args.t_steps
     # Initialize a small smooth random walk in latent space around M0.
     ctx0=model.m0.detach().clone()
-    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE)*0.01
+    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE, device=device)*0.01
     path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
     contexts=nn.Parameter(path)
     opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
-    target=torch.tensor(train_states,dtype=CDTYPE)
+    target=torch.tensor(train_states,dtype=CDTYPE,device=device)
     best=(1e9,None,None)
     hist=[]
     for step in range(args.steps):
@@ -507,7 +507,7 @@ def save_tangent_plot(result,q):
 print(f'N={N}, DIM={DIM}, context P={args.ctx_tokens*args.d_model}, dtype={args.dtype}')
 train_fields=gen_fields(args.field_seed,args.train_protocols); train_states=trajectories(train_fields)
 test_fields=(gen_fields(args.test_field_seed,args.test_protocols) if args.test_family=='random' else (gen_ood_fields(args.test_protocols) if args.test_family=='ood' else gen_stress_fields(args.test_protocols))); test_states=trajectories(test_fields)
-model=ContextNQS()
+model=ContextNQS().to(device)
 if args.load_model:
     ck=torch.load(args.load_model,map_location='cpu',weights_only=False); model.load_state_dict(ck['model']); contexts=ck.get('contexts')
     hist=np.array([])
