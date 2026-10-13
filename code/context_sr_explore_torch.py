@@ -518,7 +518,9 @@ else:
     print('fit seconds',time.time()-st)
 if args.save_model:
     torch.save({'model':model.state_dict(),'contexts':contexts,'args':vars(args)},OUT/'model.pt')
-
+print("CUDA available:", torch.cuda.is_available())
+print("Device:", device)
+print("Model device:", next(model.parameters()).device)
 # Oracle training fidelity.
 with torch.no_grad():
     psi=state_batch(model,contexts.reshape(args.train_protocols*args.t_steps,args.ctx_tokens,args.d_model)).reshape(args.train_protocols,args.t_steps,DIM)
