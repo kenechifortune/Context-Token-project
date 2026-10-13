@@ -218,7 +218,7 @@ def state_batch(model,ctx):
 
 def fit_anchor_only(model):
     opt=torch.optim.Adam(model.parameters(),lr=args.lr)
-    target=torch.tensor(initial_state(),dtype=CDTYPE)
+    target=torch.tensor(initial_state(),dtype=CDTYPE, device=device)
     hist=[]
     best=(1e9,None)
     for step in range(args.steps):
@@ -323,7 +323,7 @@ def sr_mdot(model,ctx,hx,hz,reg=None):
     vp=U@(pinv*(U.T@F))
     res_opt=max(varH-2*float(F@vp)+float(vp@S@vp),0.0)
     cov_opt=1-res_opt/max(varH,1e-30)
-    return torch.tensor(v.reshape(args.ctx_tokens,args.d_model),dtype=DTYPE),dict(
+    return torch.tensor(v.reshape(args.ctx_tokens,args.d_model),dtype=DTYPE, device=device),dict(
         coverage=coverage,coverage_opt=cov_opt,rank=rank,varH=varH,lam=lam,
         cond=float(ev.max()/max(ev[ev>cutoff].min(),1e-30)) if rank else np.inf,
         mdot_rms=float(np.sqrt(np.mean(v*v))),energy=float(np.real(Em)))
@@ -524,7 +524,7 @@ print("Model device:", next(model.parameters()).device)
 # Oracle training fidelity.
 with torch.no_grad():
     psi=state_batch(model,contexts.reshape(args.train_protocols*args.t_steps,args.ctx_tokens,args.d_model)).reshape(args.train_protocols,args.t_steps,DIM)
-    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).device().numpy()
+    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).detach().cpu().numpy()
 print('oracle mean/worst',train_fid.mean(),train_fid.min())
 
 # Test SR rollouts.
