@@ -39,7 +39,28 @@ p.add_argument('--load-model', type=str, default=None)
 p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
 args = p.parse_args()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+p.add_argument(
+    "--device",
+    choices=["auto", "cpu", "cuda"],
+    default="auto",
+)
+
+args = p.parse_args()
+
+if args.device == "cuda" and not torch.cuda.is_available():
+    raise RuntimeError("CUDA was requested, but no GPU is available.")
+
+if args.device == "cuda":
+    device = torch.device("cuda")
+elif args.device == "cpu":
+    device = torch.device("cpu")
+else:
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+
+print("Using device:", device)
 
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
