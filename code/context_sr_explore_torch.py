@@ -524,7 +524,7 @@ print("Model device:", next(model.parameters()).device)
 # Oracle training fidelity.
 with torch.no_grad():
     psi=state_batch(model,contexts.reshape(args.train_protocols*args.t_steps,args.ctx_tokens,args.d_model)).reshape(args.train_protocols,args.t_steps,DIM)
-    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).cpu().numpy()
+    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).device().numpy()
 print('oracle mean/worst',train_fid.mean(),train_fid.min())
 
 # Test SR rollouts.
