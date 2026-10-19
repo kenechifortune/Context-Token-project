@@ -38,27 +38,7 @@ p.add_argument('--save-model', action='store_true')
 p.add_argument('--load-model', type=str, default=None)
 p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
-p.add_argument(
-    "--device",
-    choices=["auto", "cpu", "cuda"],
-    default="auto",
-)
-
 args = p.parse_args()
-
-if args.device == "cuda" and not torch.cuda.is_available():
-    raise RuntimeError("CUDA was requested, but no GPU is available.")
-
-if args.device == "cuda":
-    device = torch.device("cuda")
-elif args.device == "cpu":
-    device = torch.device("cpu")
-else:
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
-    )
-
-print("Using device:", device)
 
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
@@ -171,7 +151,7 @@ def gen_fields(seed,n_protocols):
 
 # Basis bitstrings, least-significant bit = site 0.
 ALL_BITS=np.stack([((idx_np>>i)&1) for i in range(N)],axis=1).astype(np.int64)
-ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long, device=device)
+ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long)
 
 # ----------------------------
 # Context-conditioned autoregressive transformer
@@ -210,7 +190,7 @@ class ContextNQS(nn.Module):
             x=torch.cat([start,prev],dim=1)
         else: x=start
         # True means masked for torch MHA. Mask future j>i.
-        mask=torch.triu(torch.ones(N,N,dtype=torch.bool, device=device),diagonal=1)
+        mask=torch.triu(torch.ones(N,N,dtype=torch.bool),diagonal=1)
         for b in self.blocks: x=b(x,ctx,mask)
         h=self.lnf(x)
         la=self.amp(h); ph=self.phase(h)
@@ -237,7 +217,7 @@ def state_batch(model,ctx):
 
 def fit_anchor_only(model):
     opt=torch.optim.Adam(model.parameters(),lr=args.lr)
-    target=torch.tensor(initial_state(),dtype=CDTYPE, device=device)
+    target=torch.tensor(initial_state(),dtype=CDTYPE)
     hist=[]
     best=(1e9,None)
     for step in range(args.steps):
@@ -258,11 +238,11 @@ def fit_model(model,train_states):
     P=args.train_protocols; T=args.t_steps
     # Initialize a small smooth random walk in latent space around M0.
     ctx0=model.m0.detach().clone()
-    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE, device=device)*0.01
+    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE)*0.01
     path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
     contexts=nn.Parameter(path)
     opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
-    target=torch.tensor(train_states,dtype=CDTYPE,device=device)
+    target=torch.tensor(train_states,dtype=CDTYPE)
     best=(1e9,None,None)
     hist=[]
     for step in range(args.steps):
@@ -342,7 +322,7 @@ def sr_mdot(model,ctx,hx,hz,reg=None):
     vp=U@(pinv*(U.T@F))
     res_opt=max(varH-2*float(F@vp)+float(vp@S@vp),0.0)
     cov_opt=1-res_opt/max(varH,1e-30)
-    return torch.tensor(v.reshape(args.ctx_tokens,args.d_model),dtype=DTYPE, device=device),dict(
+    return torch.tensor(v.reshape(args.ctx_tokens,args.d_model),dtype=DTYPE),dict(
         coverage=coverage,coverage_opt=cov_opt,rank=rank,varH=varH,lam=lam,
         cond=float(ev.max()/max(ev[ev>cutoff].min(),1e-30)) if rank else np.inf,
         mdot_rms=float(np.sqrt(np.mean(v*v))),energy=float(np.real(Em)))
@@ -526,7 +506,7 @@ def save_tangent_plot(result,q):
 print(f'N={N}, DIM={DIM}, context P={args.ctx_tokens*args.d_model}, dtype={args.dtype}')
 train_fields=gen_fields(args.field_seed,args.train_protocols); train_states=trajectories(train_fields)
 test_fields=(gen_fields(args.test_field_seed,args.test_protocols) if args.test_family=='random' else (gen_ood_fields(args.test_protocols) if args.test_family=='ood' else gen_stress_fields(args.test_protocols))); test_states=trajectories(test_fields)
-model=ContextNQS().to(device)
+model=ContextNQS()
 if args.load_model:
     ck=torch.load(args.load_model,map_location='cpu',weights_only=False); model.load_state_dict(ck['model']); contexts=ck.get('contexts')
     hist=np.array([])
@@ -537,13 +517,11 @@ else:
     print('fit seconds',time.time()-st)
 if args.save_model:
     torch.save({'model':model.state_dict(),'contexts':contexts,'args':vars(args)},OUT/'model.pt')
-print("CUDA available:", torch.cuda.is_available())
-print("Device:", device)
-print("Model device:", next(model.parameters()).device)
+
 # Oracle training fidelity.
 with torch.no_grad():
     psi=state_batch(model,contexts.reshape(args.train_protocols*args.t_steps,args.ctx_tokens,args.d_model)).reshape(args.train_protocols,args.t_steps,DIM)
-    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).detach().cpu().numpy()
+    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).cpu().numpy()
 print('oracle mean/worst',train_fid.mean(),train_fid.min())
 
 # Test SR rollouts.
