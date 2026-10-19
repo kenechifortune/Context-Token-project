@@ -40,6 +40,41 @@ p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
 args = p.parse_args()
 
+# Load checkpoint architecture before creating the model
+checkpoint = None
+
+if args.load_model:
+    checkpoint = torch.load(
+        args.load_model,
+        map_location="cpu",
+        weights_only=False,
+    )
+
+    saved_args = checkpoint.get("args", {})
+
+    if hasattr(saved_args, "__dict__"):
+        saved_args = vars(saved_args)
+
+    for name in [
+        "Lx",
+        "Ly",
+        "d_model",
+        "num_heads",
+        "num_layers",
+        "ctx_tokens",
+        "dtype",
+    ]:
+        if name in saved_args:
+            setattr(args, name, saved_args[name])
+
+    print(
+        "Checkpoint architecture:",
+        f"d_model={args.d_model},",
+        f"num_layers={args.num_layers},",
+        f"ctx_tokens={args.ctx_tokens}",
+    )
+args = p.parse_args()
+
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -564,11 +599,6 @@ if not args.load_model:
     )
 
 print(f"Loading checkpoint: {args.load_model}")
-checkpoint = torch.load(
-    args.load_model,
-    map_location="cpu",
-    weights_only=False,
-)
 
 model = ContextNQS()
 model.load_state_dict(checkpoint["model"])
