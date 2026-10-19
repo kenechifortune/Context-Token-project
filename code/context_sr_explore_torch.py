@@ -247,7 +247,7 @@ def fit_model(model,train_states):
     P=args.train_protocols; T=args.t_steps
     # Initialize a small smooth random walk in latent space around M0.
     ctx0=model.m0.detach().clone()
-    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE)*0.01
+    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,device=device,dtype=DTYPE)*0.01
     path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
     contexts=nn.Parameter(path)
     opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
