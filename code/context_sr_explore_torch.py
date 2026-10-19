@@ -38,7 +38,16 @@ p.add_argument('--save-model', action='store_true')
 p.add_argument('--load-model', type=str, default=None)
 p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
+p.add_argument('--device', choices=['auto','cpu','cuda'], default='auto')
 args = p.parse_args()
+
+if args.device == 'cuda' and not torch.cuda.is_available():
+    raise RuntimeError('CUDA was requested, but no GPU is available.')
+device = torch.device(
+    'cuda' if args.device == 'cuda'
+    or (args.device == 'auto' and torch.cuda.is_available())
+    else 'cpu'
+)
 
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
@@ -151,7 +160,7 @@ def gen_fields(seed,n_protocols):
 
 # Basis bitstrings, least-significant bit = site 0.
 ALL_BITS=np.stack([((idx_np>>i)&1) for i in range(N)],axis=1).astype(np.int64)
-ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long)
+ALL_BITS_T=torch.tensor(ALL_BITS,dtype=torch.long,device=device)
 
 # ----------------------------
 # Context-conditioned autoregressive transformer
@@ -190,7 +199,7 @@ class ContextNQS(nn.Module):
             x=torch.cat([start,prev],dim=1)
         else: x=start
         # True means masked for torch MHA. Mask future j>i.
-        mask=torch.triu(torch.ones(N,N,dtype=torch.bool),diagonal=1)
+        mask=torch.triu(torch.ones(N,N,dtype=torch.bool,device=bits.device),diagonal=1)
         for b in self.blocks: x=b(x,ctx,mask)
         h=self.lnf(x)
         la=self.amp(h); ph=self.phase(h)
@@ -217,7 +226,7 @@ def state_batch(model,ctx):
 
 def fit_anchor_only(model):
     opt=torch.optim.Adam(model.parameters(),lr=args.lr)
-    target=torch.tensor(initial_state(),dtype=CDTYPE)
+    target=torch.tensor(initial_state(),dtype=CDTYPE,device=device)
     hist=[]
     best=(1e9,None)
     for step in range(args.steps):
@@ -242,7 +251,7 @@ def fit_model(model,train_states):
     path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
     contexts=nn.Parameter(path)
     opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
-    target=torch.tensor(train_states,dtype=CDTYPE)
+    target=torch.tensor(train_states,dtype=CDTYPE,device=device)
     best=(1e9,None,None)
     hist=[]
     for step in range(args.steps):
@@ -272,296 +281,53 @@ def model_state(model,ctx):
 def logpsi_jacobian(model,ctx):
     # Returns logpsi (DIM,), O (DIM,P) complex, exact.
     bits=ALL_BITS_T
-    x=ctx.detach().clone().requires_grad_(True)
-    def fun(flat):
-        c=flat.reshape(args.ctx_tokens,args.d_model)
-        lp=model.forward_logpsi(bits,c)
-        return torch.cat([lp.real,lp.imag],dim=0)
-    flat=x.reshape(-1)
-    vals=fun(flat)
-    J=torch.autograd.functional.jacobian(fun,flat,vectorize=True,create_graph=False)
-    lp=torch.complex(vals[:DIM],vals[DIM:])
-    O=torch.complex(J[:DIM],J[DIM:])
-    return lp.detach().cpu().numpy(),O.detach().cpu().numpy()
 
-def log_derivative_and_eloc(model,ctx,hx,hz):
-    """Return O, E_loc, probabilities, and centered exact log-time tangent."""
-    lp,O=logpsi_jacobian(model,ctx)
-    psi=np.exp(lp); psi=psi/np.linalg.norm(psi)
-    H=H_sparse(hx,hz); Hpsi=H@psi
-    denom=np.where(np.abs(psi)>1e-300,psi,1e-300+0j)
-    Eloc=Hpsi/denom
-    w=np.abs(psi)**2; w=w/w.sum()
-    Em=(w*Eloc).sum()
-    Dexact=-1j*(Eloc-Em)
-    return O,Eloc,w,Dexact
 
-def sr_mdot(model,ctx,hx,hz,reg=None):
-    lp,O=logpsi_jacobian(model,ctx)
-    psi=np.exp(lp); psi=psi/np.linalg.norm(psi)
-    H=H_sparse(hx,hz); Hpsi=H@psi
-    denom=np.where(np.abs(psi)>1e-300,psi,1e-300+0j)
-    El=Hpsi/denom; w=np.abs(psi)**2; w=w/w.sum()
-    Om=(w[:,None]*O).sum(axis=0); Em=(w*El).sum()
-    Ot=O-Om; Et=El-Em
-    S=np.real(Ot.conj().T@(w[:,None]*Ot))
-    F=np.imag(Ot.conj().T@(w*Et))
-    scale=np.trace(S)/max(S.shape[0],1); lam=(args.sr_reg if reg is None else reg)*max(scale,1e-14)
-    # SVD-based stable solve: preserve diagnostics and suppress numerical null modes.
-    ev,U=np.linalg.eigh((S+S.T)/2)
-    cutoff=args.sr_rcond*max(ev.max(),1e-30)
-    inv=np.where(ev>cutoff,1/(ev+lam),0.0)
-    v=U@(inv*(U.T@F))
-    # tangent residual with unregularized S
-    varH=float(np.real((w*np.abs(Et)**2).sum()))
-    res=max(varH-2*float(F@v)+float(v@S@v),0.0)
-    coverage=1-res/max(varH,1e-30)
-    rank=int(np.sum(ev>cutoff))
-    # unregularized optimal coverage using pseudoinverse, useful as expressivity metric independent of lambda
-    pinv=np.where(ev>cutoff,1/ev,0.0)
-    vp=U@(pinv*(U.T@F))
-    res_opt=max(varH-2*float(F@vp)+float(vp@S@vp),0.0)
-    cov_opt=1-res_opt/max(varH,1e-30)
-    return torch.tensor(v.reshape(args.ctx_tokens,args.d_model),dtype=DTYPE),dict(
-        coverage=coverage,coverage_opt=cov_opt,rank=rank,varH=varH,lam=lam,
-        cond=float(ev.max()/max(ev[ev>cutoff].min(),1e-30)) if rank else np.inf,
-        mdot_rms=float(np.sqrt(np.mean(v*v))),energy=float(np.real(Em)))
+# ------------------------------------------------------------
+# Training only
+# ------------------------------------------------------------
+print(
+    f"N={N}, DIM={DIM}, context P={args.ctx_tokens * args.d_model}, "
+    f"dtype={args.dtype}"
+)
 
-def site_probabilities(psi):
-    """Return marginal probabilities P(up), P(down) at each site."""
-    psi=np.asarray(psi,dtype=np.complex128)
-    psi=psi/np.linalg.norm(psi)
-    probs=np.abs(psi)**2
-    out=np.zeros((N,2),dtype=float)
-    for i in range(N):
-        bits=(idx_np>>i)&1
-        out[i,0]=float(probs[bits==0].sum())
-        out[i,1]=float(probs[bits==1].sum())
-    return out
+train_fields = gen_fields(args.field_seed, args.train_protocols)
+train_states = trajectories(train_fields)
 
-def energy_expectation(psi,hx,hz):
-    """Return <psi|H(hx,hz)|psi> for a normalized state."""
-    psi=np.asarray(psi,dtype=np.complex128)
-    psi=psi/np.linalg.norm(psi)
-    return float(np.real(np.vdot(psi,H_sparse(float(hx),float(hz))@psi)))
+model = ContextNQS().to(device)
 
-def entanglement_entropy(psi,cut=None):
-    """Von Neumann entropy for sites [0:cut] versus the remaining sites.
-
-    Entropy uses natural logarithms, so the maximum for an equal 3|3 split
-    of six spins is log(8). Site 0 is the least-significant bit, matching
-    ALL_BITS and the Hamiltonian construction above.
-    """
-    psi=np.asarray(psi,dtype=np.complex128)
-    psi=psi/np.linalg.norm(psi)
-    if cut is None: cut=N//2
-    if not 0<cut<N: raise ValueError('cut must satisfy 0 < cut < N')
-    da,db=2**cut,2**(N-cut)
-    coeff=np.zeros((da,db),dtype=np.complex128)
-    for idx in range(DIM):
-        coeff[idx & (da-1),idx >> cut]=psi[idx]
-    rho_a=coeff@coeff.conj().T
-    vals=np.linalg.eigvalsh((rho_a+rho_a.conj().T)/2)
-    vals=vals[vals>1e-12]
-    return float(-np.sum(vals*np.log(vals)))
-
-def save_energy_entanglement_plot(result,q):
-    """Save variational and exact energy/entropy versus time."""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    times=np.linspace(0,args.t_max,len(result['energy']))
-    fig,ax=plt.subplots(1,2,figsize=(11,4.5))
-    ax[0].plot(times,result['energy'],label='Variational')
-    ax[0].plot(times,result['exact_energy'],'--',label='Exact')
-    ax[0].set_title(r'Energy expectation $⟨H(t)⟩')
-    ax[0].set_xlabel('Time $t$'); ax[0].set_ylabel(r'$⟨H(t)⟩$')
-    ax[0].legend(); ax[0].grid(True)
-    ax[1].plot(times,result['entanglement'],label='Variational')
-    ax[1].plot(times,result['exact_entanglement'],'--',label='Exact')
-    ax[1].set_title('Bipartite entanglement entropy')
-    ax[1].set_xlabel('Time $t$'); ax[1].set_ylabel(r'$S_A=-\mathrm{Tr}(\rho_A\log\rho_A)$')
-    ax[1].legend(); ax[1].grid(True)
-    fig.suptitle(f'Energy and entanglement, test protocol {q}')
-    fig.tight_layout()
-    path=PLOT_DIR/f'energy_entanglement_test_{q}.png'
-    fig.savefig(path,dpi=180); plt.close(fig)
-    print(f'Saved energy/entanglement plot: {path.resolve()}')
-
-def save_probability_plots(result, exact_states, q):
-    """Save 2D heatmaps and 3D surfaces of site probabilities."""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    labels=[r'$P_i(\uparrow)$',r'$P_i(\downarrow)$']
-    var=result['site_probs']
-    exact=np.stack([site_probabilities(psi) for psi in exact_states])
-    times=np.linspace(0,args.t_max,args.t_steps)
-    sites=np.arange(N)
-    site_labels=[f'({i % args.Lx},{i // args.Lx})' for i in sites]
-    fig,axes=plt.subplots(2,2,figsize=(11,7),sharex=True,sharey=True)
-    for k,label in enumerate(labels):
-        for col,(data,title) in enumerate(((var,'Variational'),(exact,'Exact'))):
-            im=axes[k,col].imshow(data[:,:,k].T,aspect='auto',origin='lower',
-                                  extent=[times[0],times[-1],0,N-1],cmap='viridis',vmin=0,vmax=1)
-            axes[k,col].set_title(f'{title} {label}')
-            axes[k,col].set_xlabel('Time $t$'); axes[k,col].set_ylabel('Site $(x,y)$')
-            axes[k,col].set_xticks(times); axes[k,col].set_yticks(sites)
-            axes[k,col].set_yticklabels(site_labels)
-            fig.colorbar(im,ax=axes[k,col],shrink=.85)
-    fig.suptitle(f'Site probabilities, test protocol {q}',y=.995)
-    fig.tight_layout()
-    path2d=PLOT_DIR/f'site_probabilities_test_{q}.png'
-    fig.savefig(path2d,dpi=180); plt.close(fig)
-
-    time_grid,site_grid=np.meshgrid(times,sites,indexing='ij')
-    fig=plt.figure(figsize=(14,8))
-    for k,label in enumerate(labels):
-        ax=fig.add_subplot(2,2,k+1,projection='3d')
-        ax.plot_surface(time_grid,site_grid,var[:,:,k],cmap='viridis',vmin=0,vmax=1,linewidth=0)
-        ax.set_title(f'Variational {label}'); ax.set_xlabel('Time $t$'); ax.set_ylabel('Site $i$'); ax.set_zlabel('Probability'); ax.set_zlim(0,1)
-        ax=fig.add_subplot(2,2,k+3,projection='3d')
-        ax.plot_surface(time_grid,site_grid,exact[:,:,k],cmap='viridis',vmin=0,vmax=1,linewidth=0)
-        ax.set_title(f'Exact {label}'); ax.set_xlabel('Time $t$'); ax.set_ylabel('Site $i$'); ax.set_zlabel('Probability'); ax.set_zlim(0,1)
-    fig.suptitle(f'3D site probabilities, test protocol {q}'); fig.tight_layout()
-    path3d=PLOT_DIR/f'site_probabilities_3d_test_{q}.png'
-    fig.savefig(path3d,dpi=180); plt.close(fig)
-    print(f'Saved 2D plot: {path2d.resolve()}')
-    print(f'Saved 3D plot: {path3d.resolve()}')
-
-def rollout(model,fields,exact_states):
-    ctx=model.m0.detach().clone(); Ms=[ctx.cpu().numpy()]; mdots=[]; diags=[]; gf=[]; localF=[]
-    log_derivatives=[]; local_energies=[]; sample_weights=[]; exact_log_derivatives=[]
-    psi=model_state(model,ctx); gf.append(abs(np.vdot(exact_states[0],psi))**2)
-    site_probs=[site_probabilities(psi)]
-    energy=[energy_expectation(psi,fields[0,0],fields[0,1])]
-    exact_energy=[energy_expectation(exact_states[0],fields[0,0],fields[0,1])]
-    entanglement=[entanglement_entropy(psi)]
-    exact_entanglement=[entanglement_entropy(exact_states[0])]
-    for t in range(args.t_steps-1):
-        hx=.5*(fields[t,0]+fields[t+1,0]); hz=.5*(fields[t,1]+fields[t+1,1])
-        O_t,Eloc_t,w_t,Dexact_t=log_derivative_and_eloc(model,ctx,hx,hz)
-        log_derivatives.append(O_t); local_energies.append(Eloc_t)
-        sample_weights.append(w_t); exact_log_derivatives.append(Dexact_t)
-        if args.integrator=='euler':
-            v,d=sr_mdot(model,ctx,hx,hz); nextctx=ctx+DT*v
-        else:
-            v1,d=sr_mdot(model,ctx,hx,hz)
-            pred=ctx+DT*v1
-            # Hamiltonian at same midpoint; this is explicit Heun for autonomous-in-step tangent field.
-            v2,d2=sr_mdot(model,pred,hx,hz)
-            nextctx=ctx+.5*DT*(v1+v2)
-            # average geometric diagnostics at endpoints
-            for k in ['coverage','coverage_opt','mdot_rms']:
-                d[k]=.5*(d[k]+d2[k])
-            d['rank']=min(d['rank'],d2['rank']); d['cond']=max(d['cond'],d2['cond'])
-            v=.5*(v1+v2)
-        psi_t=model_state(model,ctx); target=evolve_step(psi_t,hx,hz)
-        psi_next=model_state(model,nextctx); localF.append(abs(np.vdot(target,psi_next))**2)
-        ctx=nextctx.detach(); Ms.append(ctx.cpu().numpy()); mdots.append(v.detach().cpu().numpy()); diags.append(d)
-        psi=model_state(model,ctx); gf.append(abs(np.vdot(exact_states[t+1],psi))**2)
-        site_probs.append(site_probabilities(psi))
-        energy.append(energy_expectation(psi,fields[t+1,0],fields[t+1,1]))
-        exact_energy.append(energy_expectation(exact_states[t+1],fields[t+1,0],fields[t+1,1]))
-        entanglement.append(entanglement_entropy(psi))
-        exact_entanglement.append(entanglement_entropy(exact_states[t+1]))
-    return dict(M=np.array(Ms),Mdot=np.array(mdots),global_fid=np.array(gf),local_fid=np.array(localF),
-                site_probs=np.stack(site_probs),log_derivatives=np.stack(log_derivatives),
-                local_energies=np.stack(local_energies),sample_weights=np.stack(sample_weights),
-                exact_log_derivatives=np.stack(exact_log_derivatives),
-                energy=np.array(energy),exact_energy=np.array(exact_energy),
-                entanglement=np.array(entanglement),exact_entanglement=np.array(exact_entanglement),
-                diags=diags)
-
-def save_tangent_plot(result,q):
-    """Save centered exact/variational tangent diagnostics."""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    O=result['log_derivatives']; w=result['sample_weights']
-    Dexact=result['exact_log_derivatives']; md=result['Mdot'].reshape(O.shape[0],-1)
-    Omean=(w[:,:,None]*O).sum(axis=1); Ot=O-Omean[:,None,:]
-    Dvar=np.einsum('tsp,tp->ts',Ot,md)
-    residual=Dexact-Dvar
-    def norm(x): return np.sqrt(np.sum(w*np.abs(x)**2,axis=1))
-    ne,nv,nr=norm(Dexact),norm(Dvar),norm(residual)
-    inner=np.sum(w*np.conj(Dexact)*Dvar,axis=1)
-    align=np.real(inner)/(ne*nv+1e-30)
-    times=np.linspace(0,args.t_max,len(ne),endpoint=False)
-    fig,ax=plt.subplots(2,2,figsize=(11,7))
-    ax[0,0].plot(times,ne,label='Exact tangent'); ax[0,0].plot(times,nv,label='Variational tangent')
-    ax[0,0].set_title('Centered tangent magnitudes'); ax[0,0].set_xlabel('Time $t$'); ax[0,0].set_ylabel('Weighted RMS'); ax[0,0].legend(); ax[0,0].grid(True)
-    ax[0,1].plot(times,nr,color='crimson'); ax[0,1].set_title('Tangent residual'); ax[0,1].set_xlabel('Time $t$'); ax[0,1].set_ylabel(r'$\|D_{exact}-D_{var}\|$'); ax[0,1].grid(True)
-    ax[1,0].plot(times,align,color='purple'); ax[1,0].set_title('Tangent directional alignment'); ax[1,0].set_xlabel('Time $t$'); ax[1,0].set_ylabel('Alignment'); ax[1,0].set_ylim(-1,1); ax[1,0].grid(True)
-    ax[1,1].plot(times,np.sqrt(np.sum(w*np.abs(result['local_energies']-np.sum(w*result['local_energies'],axis=1)[:,None])**2,axis=1)),color='darkorange')
-    ax[1,1].set_title('Centered local-energy RMS'); ax[1,1].set_xlabel('Time $t$'); ax[1,1].set_ylabel(r'$\sqrt{\mathrm{Var}(E_{loc})}$'); ax[1,1].grid(True)
-    fig.suptitle(f'TDVP tangent diagnostics, test protocol {q}'); fig.tight_layout()
-    path=PLOT_DIR/f'tangent_diagnostics_test_{q}.png'; fig.savefig(path,dpi=180); plt.close(fig)
-    print(f'Saved tangent diagnostics: {path.resolve()}')
-
-# ----------------------------
-# Main
-# ----------------------------
-print(f'N={N}, DIM={DIM}, context P={args.ctx_tokens*args.d_model}, dtype={args.dtype}')
-train_fields=gen_fields(args.field_seed,args.train_protocols); train_states=trajectories(train_fields)
-test_fields=(gen_fields(args.test_field_seed,args.test_protocols) if args.test_family=='random' else (gen_ood_fields(args.test_protocols) if args.test_family=='ood' else gen_stress_fields(args.test_protocols))); test_states=trajectories(test_fields)
-model=ContextNQS()
 if args.load_model:
-    ck=torch.load(args.load_model,map_location='cpu',weights_only=False); model.load_state_dict(ck['model']); contexts=ck.get('contexts')
-    hist=np.array([])
+    checkpoint = torch.load(
+        args.load_model,
+        map_location="cpu",
+        weights_only=False,
+    )
+    model.load_state_dict(checkpoint["model"])
+    contexts = checkpoint.get("contexts")
+    history = np.array([])
+    print(f"Loaded checkpoint: {args.load_model}")
 else:
-    st=time.time();
-    if args.fit_mode=='trajectory': contexts,hist=fit_model(model,train_states)
-    else: contexts,hist=fit_anchor_only(model)
-    print('fit seconds',time.time()-st)
+    start_time = time.time()
+
+    if args.fit_mode == "trajectory":
+        contexts, history = fit_model(model, train_states)
+    else:
+        contexts, history = fit_anchor_only(model)
+
+    print("Training seconds:", time.time() - start_time)
+
 if args.save_model:
-    torch.save({'model':model.state_dict(),'contexts':contexts,'args':vars(args)},OUT/'model.pt')
+    checkpoint = {
+        "model": model.state_dict(),
+        "contexts": contexts.detach().cpu(),
+        "args": vars(args),
+    }
+    torch.save(checkpoint, OUT / "model.pt")
+    print(f"Saved model checkpoint: {OUT / 'model.pt'}")
 
-# Oracle training fidelity.
-with torch.no_grad():
-    psi=state_batch(model,contexts.reshape(args.train_protocols*args.t_steps,args.ctx_tokens,args.d_model)).reshape(args.train_protocols,args.t_steps,DIM)
-    tar=torch.tensor(train_states,dtype=CDTYPE); train_fid=(torch.abs(torch.sum(torch.conj(tar)*psi,dim=-1))**2).cpu().numpy()
-print('oracle mean/worst',train_fid.mean(),train_fid.min())
+np.save(OUT / "train_fields.npy", train_fields)
+np.save(OUT / "fit_history.npy", history)
 
-# Test SR rollouts.
-rolls=[]
-for q in range(args.test_protocols):
-    print('rollout test',q)
-    r=rollout(model,test_fields[q],test_states[q]); rolls.append(r)
-    save_probability_plots(r,test_states[q],q)
-    save_tangent_plot(r,q)
-    save_energy_entanglement_plot(r,q)
-    cov=np.array([d['coverage_opt'] for d in r['diags']]); rk=np.array([d['rank'] for d in r['diags']])
-    print('  mean/final global F',r['global_fid'].mean(),r['global_fid'][-1],'mean local F',r['local_fid'].mean(),'cov opt',cov.mean(),cov.min(),'rank med',np.median(rk))
+print("Training complete.")
+print("No rollout, observables, or plots were calculated.")
 
-summ=[]
-for q,r in enumerate(rolls):
-    cov=np.array([d['coverage'] for d in r['diags']]); covo=np.array([d['coverage_opt'] for d in r['diags']]); rk=np.array([d['rank'] for d in r['diags']])
-    summ.append(dict(test=q,mean_global_fid=float(r['global_fid'].mean()),final_global_fid=float(r['global_fid'][-1]),
-                     mean_local_fid=float(r['local_fid'].mean()),worst_local_fid=float(r['local_fid'].min()),
-                     mean_coverage=float(cov.mean()),mean_coverage_opt=float(covo.mean()),worst_coverage_opt=float(covo.min()),
-                     median_rank=float(np.median(rk)),max_rank=int(rk.max())))
-summary=dict(config=vars(args),oracle_mean=float(train_fid.mean()),oracle_worst=float(train_fid.min()),tests=summ,
-             avg_test_mean_global=float(np.mean([s['mean_global_fid'] for s in summ])),avg_test_final_global=float(np.mean([s['final_global_fid'] for s in summ])),
-             avg_coverage_opt=float(np.mean([s['mean_coverage_opt'] for s in summ])))
-print(json.dumps(summary,indent=2))
-with open(OUT/'summary.json','w') as f: json.dump(summary,f,indent=2)
-save_data=dict(train_fields=train_fields,test_fields=test_fields,train_fid=train_fid,fit_hist=hist)
-for i,r in enumerate(rolls):
-    save_data[f'gfid_{i}']=r['global_fid']
-    save_data[f'lfid_{i}']=r['local_fid']
-    save_data[f'M_{i}']=r['M']
-    save_data[f'Mdot_{i}']=r['Mdot']
-    save_data[f'site_probs_{i}']=r['site_probs']
-    save_data[f'log_derivatives_{i}']=r['log_derivatives']
-    save_data[f'local_energies_{i}']=r['local_energies']
-    save_data[f'sample_weights_{i}']=r['sample_weights']
-    save_data[f'exact_log_derivatives_{i}']=r['exact_log_derivatives']
-    save_data[f'energy_{i}']=r['energy']
-    save_data[f'exact_energy_{i}']=r['exact_energy']
-    save_data[f'entanglement_{i}']=r['entanglement']
-    save_data[f'exact_entanglement_{i}']=r['exact_entanglement']
-    save_data[f'coverage_{i}']=np.array([d['coverage_opt'] for d in r['diags']])
-    save_data[f'rank_{i}']=np.array([d['rank'] for d in r['diags']])
-np.savez_compressed(OUT/'results.npz',**save_data)
