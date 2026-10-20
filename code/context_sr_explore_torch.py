@@ -219,6 +219,8 @@ class ContextNQS(nn.Module):
 # ----------------------------
 def state_batch(model,ctx):
     # ctx: (Q,C,D), return (Q,DIM)
+    model_device = next(model.parameters()).device
+    ctx = ctx.to(model_device)
     Q=ctx.shape[0]
     bits=ALL_BITS_T.repeat(Q,1)
     ctx_big=ctx[:,None,:,:].expand(Q,DIM,args.ctx_tokens,args.d_model).reshape(Q*DIM,args.ctx_tokens,args.d_model)
