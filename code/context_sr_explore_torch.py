@@ -489,6 +489,31 @@ if args.m0_search:
             contexts[:, 0].copy_(model.m0)
 
     print("Training seconds:", time.time() - start_time)
+# Calculate only the initial fidelity
+with torch.no_grad():
+    target = torch.tensor(
+        initial_state(),
+        dtype=CDTYPE,
+        device=next(model.parameters()).device,
+    )
+
+    prediction = state_batch(
+        model,
+        model.m0[None],
+    )[0]
+
+    initial_fidelity = torch.abs(
+        torch.sum(torch.conj(target) * prediction)
+    ) ** 2
+
+initial_fidelity_value = float(
+    initial_fidelity.detach().cpu()
+)
+
+print(
+    f"Initial fidelity: "
+    f"{initial_fidelity_value:.8f}"
+)
 
 if args.save_model:
     checkpoint = {
@@ -498,7 +523,10 @@ if args.save_model:
     }
     torch.save(checkpoint, OUT / "model.pt")
     print(f"Saved model checkpoint: {OUT / 'model.pt'}")
-
+np.save(
+    OUT / "initial_fidelity.npy",
+    initial_fidelity_value,
+)
 np.save(OUT / "train_fields.npy", train_fields)
 np.save(OUT / "fit_history.npy", history)
 
