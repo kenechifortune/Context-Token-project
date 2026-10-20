@@ -253,12 +253,43 @@ def fit_anchor_only(model):
 def fit_model(model,train_states):
     P=args.train_protocols; T=args.t_steps
     # Initialize a small smooth random walk in latent space around M0.
-    ctx0=model.m0.detach().clone()
-    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE)*0.01
-    path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
-    contexts=nn.Parameter(path)
-    opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
-    target=torch.tensor(train_states,dtype=CDTYPE,device=device)
+    # Always use the device where the model actually lives
+    model_device = next(model.parameters()).device
+
+    # Initial context on the model's device
+    ctx0 = model.m0.detach().clone().to(model_device)
+
+    # Context increments on the same device
+    increments = torch.randn(
+        P,
+        T - 1,
+        args.ctx_tokens,
+        args.d_model,
+        dtype=DTYPE,
+        device=model_device,
+    ) * 0.01
+
+    path = torch.cat(
+        [
+            ctx0[None, None].expand(P, 1, -1, -1),
+            ctx0[None, None]
+            + torch.cumsum(increments, dim=1),
+        ],
+        dim=1,
+    )
+
+    contexts = nn.Parameter(path)
+
+    opt = torch.optim.Adam(
+        list(model.parameters()) + [contexts],
+        lr=args.lr,
+    )
+
+    target = torch.tensor(
+        train_states,
+        dtype=CDTYPE,
+        device=model_device,
+    )
     best=(1e9,None,None)
     hist=[]
     for step in range(args.steps):
