@@ -72,6 +72,7 @@ if args.load_model:
         f"d_model={args.d_model},",
         f"num_layers={args.num_layers},",
         f"ctx_tokens={args.ctx_tokens}",
+        f"num_heads={args.num_heads}",
     )
 args = p.parse_args()
 
