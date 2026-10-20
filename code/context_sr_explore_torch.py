@@ -39,6 +39,11 @@ p.add_argument('--load-model', type=str, default=None)
 p.add_argument('--dtype', choices=['float32','float64'], default='float64')
 p.add_argument('--print-every', type=int, default=100)
 p.add_argument('--device', choices=['auto','cpu','cuda'], default='auto')
+p.add_argument('--m0-search', action='store_true')
+p.add_argument('--m0-starts', type=int, default=16)
+p.add_argument('--m0-keep', type=int, default=4)
+p.add_argument('--m0-steps', type=int, default=100)
+p.add_argument('--m0-lr', type=float, default=1e-2)
 args = p.parse_args()
 
 if args.device == 'cuda' and not torch.cuda.is_available():
@@ -247,7 +252,7 @@ def fit_model(model,train_states):
     P=args.train_protocols; T=args.t_steps
     # Initialize a small smooth random walk in latent space around M0.
     ctx0=model.m0.detach().clone()
-    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,device=device,dtype=DTYPE)*0.01
+    increments=torch.randn(P,T-1,args.ctx_tokens,args.d_model,dtype=DTYPE)*0.01
     path=torch.cat([ctx0[None,None].expand(P,1,-1,-1), ctx0[None,None]+torch.cumsum(increments,dim=1)],dim=1)
     contexts=nn.Parameter(path)
     opt=torch.optim.Adam(list(model.parameters())+[contexts],lr=args.lr)
@@ -271,6 +276,127 @@ def fit_model(model,train_states):
             print(f'fit {step:5d} loss={lf:.4e} meanF={float(fids.mean()):.6f} worstF={float(fids.min()):.6f} smooth={float(smooth):.3e}')
     model.load_state_dict(best[1]); return best[2],np.array(hist)
 
+def optimize_initial_context(model, target_np):
+    """Search for the best initial context M0."""
+
+    # Freeze transformer parameters
+    old_grad_settings = []
+
+    for parameter in model.parameters():
+        old_grad_settings.append(parameter.requires_grad)
+        parameter.requires_grad_(False)
+
+    target = torch.tensor(
+        target_np,
+        dtype=CDTYPE,
+        device=device,
+    )
+
+    d = args.d_model
+    candidates = []
+
+    # Random search through M-space
+    with torch.no_grad():
+        for _ in range(args.m0_starts):
+            candidate = torch.randn_like(model.m0)
+
+            candidate = (
+                candidate
+                / torch.linalg.vector_norm(
+                    candidate,
+                    dim=-1,
+                    keepdim=True,
+                )
+                * math.sqrt(d)
+            )
+
+            psi = state_batch(model, candidate[None])[0]
+
+            fidelity = torch.abs(
+                torch.sum(torch.conj(target) * psi)
+            ) ** 2
+
+            candidates.append(
+                (float(fidelity), candidate.detach().clone())
+            )
+
+    candidates.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    candidates = candidates[:args.m0_keep]
+
+    best_fidelity = -1.0
+    best_context = None
+
+    # Locally optimize the best random candidates
+    for _, candidate in candidates:
+        context = nn.Parameter(candidate.clone())
+
+        optimizer = torch.optim.Adam(
+            [context],
+            lr=args.m0_lr,
+        )
+
+        for _ in range(args.m0_steps):
+            optimizer.zero_grad(set_to_none=True)
+
+            psi = state_batch(model, context[None])[0]
+
+            fidelity = torch.abs(
+                torch.sum(torch.conj(target) * psi)
+            ) ** 2
+
+            loss = 1.0 - fidelity
+            loss.backward()
+            optimizer.step()
+
+            # Keep context-token norms fixed
+            with torch.no_grad():
+                context.copy_(
+                    context
+                    / torch.linalg.vector_norm(
+                        context,
+                        dim=-1,
+                        keepdim=True,
+                    )
+                    * math.sqrt(d)
+                )
+
+        with torch.no_grad():
+            psi = state_batch(model, context[None])[0]
+
+            fidelity = torch.abs(
+                torch.sum(torch.conj(target) * psi)
+            ) ** 2
+
+        fidelity_value = float(fidelity)
+
+        if fidelity_value > best_fidelity:
+            best_fidelity = fidelity_value
+            best_context = context.detach().clone()
+
+    if best_context is None:
+        raise RuntimeError("M0 search failed.")
+
+    # Replace the model's original M0
+    with torch.no_grad():
+        model.m0.copy_(best_context)
+
+    # Restore transformer gradient settings
+    for parameter, old_setting in zip(
+        model.parameters(),
+        old_grad_settings,
+    ):
+        parameter.requires_grad_(old_setting)
+
+    print(
+        f"Best M0 initial fidelity: "
+        f"{best_fidelity:.8f}"
+    )
+
+    return best_context, best_fidelity
 # ----------------------------
 # Exact SR/TDVP in context coordinates
 # ----------------------------
@@ -313,6 +439,21 @@ else:
         contexts, history = fit_model(model, train_states)
     else:
         contexts, history = fit_anchor_only(model)
+if args.m0_search:
+    print("Searching for improved initial M0...")
+
+    best_m0, best_m0_fidelity = optimize_initial_context(
+        model,
+        initial_state(),
+    )
+
+    with torch.no_grad():
+        if args.fit_mode == "anchor":
+            contexts.copy_(
+                model.m0[None, None].expand_as(contexts)
+            )
+        else:
+            contexts[:, 0].copy_(model.m0)
 
     print("Training seconds:", time.time() - start_time)
 
