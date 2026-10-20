@@ -74,7 +74,6 @@ if args.load_model:
         f"ctx_tokens={args.ctx_tokens}",
         f"num_heads={args.num_heads}",
     )
-args = p.parse_args()
 
 torch.set_num_threads(min(9, os.cpu_count() or 1))
 torch.manual_seed(args.seed)
