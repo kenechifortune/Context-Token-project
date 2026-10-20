@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess
 import sys
-
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -14,10 +14,21 @@ EVALUATE = ROOT / "code" / "evaluate_context_sr_torch.py"
 RUNS = ROOT / "runs" / "initial_fidelity_vs_Lx"
 RUNS.mkdir(parents=True, exist_ok=True)
 
+parser = argparse.ArgumentParser()
 
+parser.add_argument(
+    "--lx-values",
+    nargs="+",
+    type=int,
+    default=[1, 2, 3, 4],
+)
+
+args = parser.parse_args()
+
+LX_VALUES = args.lx_values
 # Change these values to choose the lattice sizes.
-LX_VALUES = np.arange(1, 7)
-LY = 2
+
+LY = 1
 
 
 # Use modest values for the first test. Increase steps afterward.
