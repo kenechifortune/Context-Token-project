@@ -43,7 +43,7 @@ p.add_argument('--m0-search', action='store_true')
 p.add_argument('--m0-starts', type=int, default=16)
 p.add_argument('--m0-keep', type=int, default=4)
 p.add_argument('--m0-steps', type=int, default=100)
-p.add_argument('--m0-lr', type=float, default=1e-2)
+p.add_argument('--m0-lr', type=float, default=2e-3)
 args = p.parse_args()
 
 if args.device == 'cuda' and not torch.cuda.is_available():
