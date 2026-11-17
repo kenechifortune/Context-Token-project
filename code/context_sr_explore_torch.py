@@ -279,42 +279,42 @@ class ContextNQS(nn.Module):
         return raw_logits, raw_phase
 
 
-def forward_logpsi(self, bits, ctx):
-    B = bits.shape[0]
+    def forward_logpsi(self, bits, ctx):
+        B = bits.shape[0]
 
-    raw_logits, raw_phase = self._raw_heads(bits, ctx)
+        raw_logits, raw_phase = self._raw_heads(bits, ctx)
 
-    if args.hard_initial_anchor:
-        m0 = self.m0.to(
-            device=bits.device,
-            dtype=raw_logits.dtype,
+        if args.hard_initial_anchor:
+            m0 = self.m0.to(
+                device=bits.device,
+                dtype=raw_logits.dtype,
+            )
+            m0 = m0.unsqueeze(0).expand(B, -1, -1)
+
+            initial_logits, initial_phase = self._raw_heads(bits, m0)
+
+            # Force both outputs to vanish at ctx = M0.
+            raw_logits = raw_logits - initial_logits
+            raw_phase = raw_phase - initial_phase
+
+        logp = torch.log_softmax(raw_logits, dim=-1)
+
+        one_hot = torch.nn.functional.one_hot(
+            bits,
+            num_classes=2,
+        ).to(logp.dtype)
+
+        logamp = 0.5 * torch.sum(
+            logp * one_hot,
+            dim=(-1, -2),
         )
-        m0 = m0.unsqueeze(0).expand(B, -1, -1)
 
-        initial_logits, initial_phase = self._raw_heads(bits, m0)
+        phase = torch.sum(
+            raw_phase * one_hot,
+            dim=(-1, -2),
+        )
 
-        # Force both outputs to vanish at ctx = M0.
-        raw_logits = raw_logits - initial_logits
-        raw_phase = raw_phase - initial_phase
-
-    logp = torch.log_softmax(raw_logits, dim=-1)
-
-    one_hot = torch.nn.functional.one_hot(
-        bits,
-        num_classes=2,
-    ).to(logp.dtype)
-
-    logamp = 0.5 * torch.sum(
-        logp * one_hot,
-        dim=(-1, -2),
-    )
-
-    phase = torch.sum(
-        raw_phase * one_hot,
-        dim=(-1, -2),
-    )
-
-    return torch.complex(logamp, phase)
+        return torch.complex(logamp, phase)
 
 # ----------------------------
 # Training utilities
